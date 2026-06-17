@@ -10,7 +10,7 @@ load_dotenv()
 import os
 
 def get_llm():
-    return ChatMistralAI(model="mistral-small-latest", mistral_api_key = os.getenv("MISTRAL_API_KEY"), temperature=0)
+    return ChatMistralAI(model="mistral-small-latest", mistral_api_key = os.getenv("MISTRAL_API_KEY"), temperature=0.3)
 
 def split_transcript(transcript:str) -> list:
     splitter = RecursiveCharacterTextSplitter(
@@ -22,11 +22,11 @@ def split_transcript(transcript:str) -> list:
 def summarize(transcript:str)->str:
     llm = get_llm()
     map_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system","Summarize this portion of a meeting transcript concisely."),
-            ("human","{text}")
-        ]
-    )
+    [
+        ("system","Summarize this portion of the transcript concisely in 2-3 sentences."),
+        ("human","{text}")
+    ]
+)
     #Jab bhi koi input aayega, pehle prompt mein daalna, phir llm ko bhejna, phir output parse karna.
 
     #1. map_chain define hua
@@ -49,32 +49,46 @@ def summarize(transcript:str)->str:
     #separator.join(iterable_of_strings)
     combined= "\n\n".join(chunk_summaries)
     parser = JsonOutputParser()
+    parser = JsonOutputParser()
+
     combined_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            f"""
-            You are an expert meeting summarizer.
+        [
+            (
+                "system",
+                """
+                You are an expert content summarizer.
 
-            Generate:
-            1. A professional meeting title (maximum 8 words)
-            2. A concise bullet-point summary
+                Analyze the provided partial summaries of a transcript and generate:
 
-            Return ONLY valid JSON in this format:
+                1. A concise title that captures the main topic (maximum 8 words)
+                2. Key bullet-point summary of the main ideas
 
-            {
-                "title": "Meeting Title",
-                "summary": "Bullet point summary"
-            }
-            {parser.get_format_instructions()}
-            """
-        ),
-        ("human", "{text}")
-    ]
+                Return ONLY valid JSON.
+
+                {format_instructions}
+
+                Note:
+                - Strictly follow the provided content.
+                - Do not hallucinate.
+                - Keep the title concise.
+                """
+            ),
+            (
+                "human",
+                """
+                Partial Summaries:
+
+                {text}
+                """
+            )
+        ]
     )
-    
     combined_chain = (
-        RunnablePassthrough() | RunnableLambda(lambda x: {"text":x}) | combined_prompt | llm | JsonOutputParser()
+        RunnablePassthrough()
+        | RunnableLambda(lambda x: {"text": x, "format_instructions": parser.get_format_instructions()})
+        | combined_prompt
+        | llm
+        | JsonOutputParser()
     )
     
     return combined_chain.invoke(combined)
