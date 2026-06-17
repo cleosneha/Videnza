@@ -1,41 +1,53 @@
 import os
 from pathlib import Path
-
 import yt_dlp
 from pydub import AudioSegment
 
-
 def download_youtube_audio(url: str, output_dir: str) -> str:
     output_path = os.path.join(output_dir, "%(title)s.%(ext)s")
+    
     ydl_opts = {
-    "format": "bestaudio/best",
-    "outtmpl": output_path,
+        "format": "bestaudio/best",
+        "outtmpl": output_path,
+        
+        # FIX 403: Disable local cache and swap heavily blocked clients ('web', 'android')
+        # for less restricted ones ('ios', 'mweb', or 'android_sdkless')
+        "cachedir": False,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "mweb", "default"]
+            }
+        },
+        
+        # FIX 403: Add common browser headers to mimic human behavior
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        },
 
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android", "web"]
-        }
-    },
+        "noplaylist": True,
+        "geo_bypass": True,
+        "quiet": True,
 
-    "noplaylist": True,
-    "geo_bypass": True,
-    "quiet": True,
-
-    "postprocessors": [
-        {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "wav",
-            "preferredquality": "192",
-        }
-    ],
-
-    "postprocessor_args": [
-        "-ac", "1",
-        "-ar", "16000"
-    ],
-}
+        # Postprocessors require system ffmpeg to be installed
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "wav",
+                "preferredquality": "192",
+            }
+        ],
+        "postprocessor_args": [
+            "-ac", "1",
+            "-ar", "16000"
+        ],
+    }
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
+            # FIX 403: Explicitly clear the instance cache before making the request
+            ydl.cache.remove()
             info = ydl.extract_info(url, download=True)
         except Exception as e:
             raise RuntimeError(
@@ -78,16 +90,12 @@ def chunk_audio(wav_path: str, output_dir: str, chunk_minutes: int = 10) -> list
 
 def process_input(source: str, output_dir: str) -> list:
     if source.startswith("https://") or source.startswith("http://"):
-        #print("Detected youtube video URL. Downloading audio...")
         wav_path = download_youtube_audio(source, output_dir=output_dir)
     else:
-        #print("Detected local file. Converting to WAV...")
         wav_path = convert_to_wav(source, output_dir=output_dir)
 
     try:
-        #print("Chunking audio...")
         chunks = chunk_audio(wav_path, output_dir=output_dir)
-        #print(f"Audio Ready - {len(chunks)} chunks(s) created!!!!")
         return chunks
     finally:
         if os.path.exists(wav_path):
