@@ -1,5 +1,13 @@
+import shutil
+import tempfile
+
 import streamlit as st
-import time
+from core.namespace_manager import (
+    cleanup_expired_namespaces,
+    ensure_session_namespace,
+    get_session_namespace,
+    reset_session_namespace,
+)
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -380,6 +388,18 @@ for key in ["result", "chat_history", "processing", "current_step"]:
     if key not in st.session_state:
         st.session_state[key] = None if key != "chat_history" else []
 
+# Ensure namespace exists — this runs once per session
+ns = ensure_session_namespace(st.session_state)
+#print(f"[App] Session initialized with namespace: {ns}")
+
+
+def clear_session_state():
+    st.session_state.result = None
+    st.session_state.chat_history = []
+    st.session_state.processing = None
+    st.session_state.current_step = None
+    st.session_state.chat_input = ""
+
 
 def render_pipeline(active_step: int, done_steps: list):
     """Render the pipeline progress tracker."""
@@ -446,8 +466,13 @@ if run_btn:
     if not source.strip():
         st.warning("Please enter a YouTube URL or local file path.")
     else:
-        st.session_state.result = None
-        st.session_state.chat_history = []
+        #print(f"[App] Run button clicked — source: {source[:80]}... language: {language}")
+        current_namespace = get_session_namespace(st.session_state)
+        #print(f"[App] Current namespace before reset: {current_namespace}")
+        cleanup_expired_namespaces(exclude_namespaces={current_namespace} if current_namespace else None)
+        namespace = reset_session_namespace(st.session_state, register=True)
+        #print(f"[App] Pipeline will use namespace: {namespace}")
+        clear_session_state()
 
         # ── Immediate boot loader — renders BEFORE any imports ────────────────
         boot_placeholder = st.empty()
@@ -477,6 +502,8 @@ if run_btn:
             boot_placeholder.empty()
             pipeline_placeholder.markdown(render_pipeline(step, done), unsafe_allow_html=True)
 
+        work_dir = tempfile.mkdtemp(prefix="video-agent-")
+
         try:
             done = []
             update_pipeline(0, done)
@@ -490,7 +517,7 @@ if run_btn:
 
             # Step 0 → 1: process_input + transcribe
             from utils.audio_processor import process_input
-            chunks = process_input(source=source)
+            chunks = process_input(source=source, output_dir=work_dir)
             done = [0]
             update_pipeline(1, done)
             status_placeholder.markdown(
@@ -499,7 +526,7 @@ if run_btn:
             )
 
             from core.transcriber import transcribe_all
-            transcript = transcribe_all(chunks, language=language)
+            transcript = transcribe_all(chunks, language=language, output_dir=work_dir)
             done = [0, 1]
             update_pipeline(2, done)
             status_placeholder.markdown(
@@ -530,7 +557,7 @@ if run_btn:
             )
 
             from core.RAG_Engine import build_rag_chain
-            rag_chain = build_rag_chain(transcript)
+            rag_chain = build_rag_chain(transcript, namespace=namespace)
             done = [0, 1, 2, 3, 4]
             update_pipeline(-1, done)
             status_placeholder.markdown(
@@ -539,6 +566,7 @@ if run_btn:
             )
 
             st.session_state.result = {
+                "namespace": namespace,
                 "title": title,
                 "transcript": transcript,
                 "summary": summary_points,
@@ -547,12 +575,15 @@ if run_btn:
                 "open_questions": questions,
                 "rag_chain": rag_chain,
             }
+            #print(f"[App] Pipeline complete — namespace={namespace} title={title[:50]}...")
 
         except Exception as e:
             boot_placeholder.empty()
             pipeline_placeholder.empty()
             status_placeholder.empty()
             st.error(f"Pipeline error: {e}")
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
 
 # ── Results ───────────────────────────────────────────────────────────────────
 if st.session_state.result:
@@ -579,10 +610,7 @@ if st.session_state.result:
           </div>
         """, unsafe_allow_html=True)
         summary = r["summary"]
-        if isinstance(summary, list):
-            st.markdown(render_bullets(summary), unsafe_allow_html=True)
-        else:
-            st.markdown(render_bullets(summary), unsafe_allow_html=True)
+        st.markdown(render_bullets(summary), unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_r:
@@ -665,9 +693,16 @@ if st.session_state.result:
         ask_btn = st.button("Ask →", use_container_width=True, key="ask_btn")
 
     if ask_btn and question.strip():
-        from core.RAG_Engine import ask_question
+        from core.RAG_Engine import ask_question, load_rag_chain
+        session_ns = get_session_namespace(st.session_state)
+        result_ns = r.get("namespace")
+        print(f"[App] Chat question — session_ns={session_ns} result_ns={result_ns}")
+        if result_ns and result_ns != session_ns:
+            print(f"[App] WARNING: namespace mismatch — result stored under {result_ns} but session is {session_ns}")
         with st.spinner(""):
-            answer = ask_question(r["rag_chain"], question.strip())
+            chain = r["rag_chain"] if r.get("rag_chain") else load_rag_chain(namespace=result_ns or session_ns)
+            answer = ask_question(chain, question.strip())
         st.session_state.chat_history.append({"role": "user", "content": question.strip()})
         st.session_state.chat_history.append({"role": "assistant", "content": answer})
+        print(f"[App] Chat answer generated for namespace: {session_ns}")
         st.rerun()

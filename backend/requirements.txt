@@ -7,9 +7,7 @@ pydub>=0.25.1                     # Audio file manipulation / format conversion
 ffmpeg-python>=0.2.0              # FFmpeg bindings (FFmpeg binary must be installed separately)
 
 # ── Speech-to-Text (local Whisper) ────────────────────────────────────────────
-openai-whisper>=20231117          # OpenAI Whisper (runs locally)
-torch>=2.2.0                      # PyTorch backend for Whisper
-torchaudio>=2.2.0                 # Audio utilities for PyTorch
+groq>=0.11.0                      # Groq Whisper API client
 
 # ── Translation (Hindi → English) ─────────────────────────────────────────────
 deep-translator>=1.11.4           # Lightweight translation wrapper (Google backend)
@@ -22,7 +20,8 @@ langchain-mistralai>=0.1.0        # LangChain wrapper for Mistral API
 mistralai>=0.4.0                  # Official Mistral Python client
 
 # ── RAG Pipeline ──────────────────────────────────────────────────────────────
-chromadb>=0.5.0                   # Local vector store
+pinecone[grpc]>=5.1.0             # Cloud vector store
+langchain-pinecone>=0.1.2         # LangChain <-> Pinecone bridge
 sentence-transformers>=3.0.0      # HuggingFace embedding models
 langchain-huggingface>=0.0.3      # LangChain ↔ HuggingFace embeddings bridge
 huggingface-hub>=0.23.0           # Model downloading from HuggingFace Hub
@@ -43,5 +42,3 @@ numpy>=1.26.0
 tqdm>=4.66.0                      # Progress bars
 requests>=2.32.0
 
-# Add this line to requirements.txt
-torchvision>=0.17.0

@@ -15,11 +15,16 @@ def get_llm():
 def format_docs(docs):
     return "\n\n".join([doc.page_content for doc in docs])
 
-def build_rag_chain(transcript:str):
+def build_rag_chain(transcript: str, namespace: str):
+    if not namespace:
+        raise ValueError("namespace is required to build RAG chain")
+    if not transcript or not transcript.strip():
+        raise ValueError("transcript is empty — cannot build RAG chain")
 
-    vector_store = build_vector_store(transcript)
-
+    #print(f"[RAG] Building RAG chain for namespace: {namespace}")
+    vector_store = build_vector_store(transcript, namespace=namespace)
     retriever = get_retriever(vector_store, k=4)
+    #print(f"[RAG] Retriever created for namespace: {namespace}")
 
     llm = get_llm()
 
@@ -40,7 +45,6 @@ Context from transcript:
         ("human", "{question}"),
     ])
 
-    # Full LCEL RAG pipeline 
     rag_chain = (
         {
             "context": retriever | RunnableLambda(format_docs),
@@ -51,12 +55,18 @@ Context from transcript:
         | StrOutputParser()
     )
 
+    #print(f"[RAG] RAG chain ready for namespace: {namespace}")
     return rag_chain
 
 
-def load_rag_chain():
-    vector_store = load_vector_store()
+def load_rag_chain(namespace: str):
+    if not namespace:
+        raise ValueError("namespace is required to load RAG chain")
+
+    #print(f"[RAG] Loading RAG chain for namespace: {namespace}")
+    vector_store = load_vector_store(namespace=namespace)
     retriever = get_retriever(vector_store)
+    #print(f"[RAG] Retriever loaded for namespace: {namespace}")
 
     llm = get_llm()
     
@@ -91,7 +101,7 @@ Context from transcript:
 
 
 def ask_question(rag_chain, question: str) -> str:
-    print(f"Question: {question}")
+    #print(f"Question: {question}")
     answer = rag_chain.invoke(question)
-    print(f"Answer: {answer}")
+    #print(f"Answer: {answer}")
     return answer
