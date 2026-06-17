@@ -17,11 +17,8 @@ langchain-community>=0.2.0
 langchain-mistralai>=0.1.0
 mistralai>=0.4.0
 
-# ── Vector Store / Embeddings ───────────────────────────────────────────────
-pinecone[grpc]>=5.1.0
-langchain-pinecone>=0.1.2
-
-
+# ── Pinecone (SDK v9+, no langchain-pinecone wrapper needed) ────────────────
+pinecone>=9.0.0
 
 tiktoken>=0.7.0
 

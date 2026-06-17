@@ -1,17 +1,17 @@
 from langchain_core.documents import Document
-from langchain_pinecone import PineconeVectorStore
+from langchain_core.runnables import RunnableLambda
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from core.namespace_manager import get_embeddings, get_index
 
 
-def build_vector_store(transcript: str, namespace: str) -> PineconeVectorStore:
+def build_vector_store(transcript: str, namespace: str) -> str:
     if not namespace:
         raise ValueError("namespace is required to build vector store")
     if not transcript or not transcript.strip():
         raise ValueError("transcript is empty — cannot build vector store")
 
-    #print(f"[VectorStore] Building index for namespace: {namespace}")
+    print(f"[VectorStore] Building index for namespace: {namespace}")
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_text(transcript)
@@ -19,58 +19,62 @@ def build_vector_store(transcript: str, namespace: str) -> PineconeVectorStore:
     if not chunks:
         raise ValueError("transcript produced zero chunks after splitting")
 
-    docs = [
-        Document(
-            page_content=chunk,
-            metadata={"chunk_index": i, "source": "video_transcript", "namespace": namespace},
-        )
+    print(f"[VectorStore] Inserting {len(chunks)} chunks into namespace: {namespace}")
+
+    embeddings = get_embeddings()
+    index = get_index()
+
+    embedding_vectors = embeddings.embed_documents(chunks)
+
+    vectors = [
+        {
+            "id": f"{namespace}-chunk-{i}",
+            "values": embedding_vectors[i],
+            "metadata": {
+                "text": chunk,
+                "chunk_index": i,
+                "source": "video_transcript",
+                "namespace": namespace,
+            },
+        }
         for i, chunk in enumerate(chunks)
     ]
-    ids = [f"{namespace}-chunk-{i}" for i in range(len(docs))]
-
-    #print(f"[VectorStore] Inserting {len(docs)} document(s) into namespace: {namespace}")
-
-    embeddings = get_embeddings()
-    index = get_index()
 
     try:
-        vector_store = PineconeVectorStore(
-            index=index,
-            embedding=embeddings,
-            namespace=namespace,
-        )
-        vector_store.add_documents(documents=docs, ids=ids)
-        #print(f"[VectorStore] Successfully inserted {len(docs)} vectors into namespace: {namespace}")
+        index.upsert(vectors=vectors, namespace=namespace)
+        print(f"[VectorStore] Successfully inserted {len(vectors)} vectors into namespace: {namespace}")
     except Exception as e:
-        #print(f"[VectorStore] Pinecone insertion failed for namespace {namespace}: {e}")
+        print(f"[VectorStore] Pinecone insertion failed for namespace {namespace}: {e}")
         raise
 
-    return vector_store
+    return namespace
 
 
-def load_vector_store(namespace: str) -> PineconeVectorStore:
+def load_vector_store(namespace: str) -> str:
     if not namespace:
         raise ValueError("namespace is required to load vector store")
+    print(f"[VectorStore] Using namespace: {namespace}")
+    return namespace
 
-    #print(f"[VectorStore] Loading vector store for namespace: {namespace}")
 
+def get_retriever(namespace: str, k: int = 4):
     embeddings = get_embeddings()
     index = get_index()
-    try:
-        vector_store = PineconeVectorStore(
-            index=index,
-            embedding=embeddings,
+
+    def retrieve(query: str) -> list[Document]:
+        query_vector = embeddings.embed_query(query)
+        results = index.query(
+            vector=query_vector,
+            top_k=k,
             namespace=namespace,
+            include_metadata=True,
+            include_values=False,
         )
-        #print(f"[VectorStore] Loaded vector store for namespace: {namespace}")
-        return vector_store
-    except Exception as e:
-        #print(f"[VectorStore] Failed to load vector store for namespace {namespace}: {e}")
-        raise
+        docs = []
+        for match in results.matches:
+            metadata = match.metadata or {}
+            text = metadata.pop("text", "")
+            docs.append(Document(page_content=text, metadata=metadata))
+        return docs
 
-
-def get_retriever(vector_store: PineconeVectorStore, k: int = 4):
-    return vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": k},
-    )
+    return RunnableLambda(retrieve)
