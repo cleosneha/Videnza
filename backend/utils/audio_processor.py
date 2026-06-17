@@ -8,23 +8,42 @@ from pydub import AudioSegment
 def download_youtube_audio(url: str, output_dir: str) -> str:
     output_path = os.path.join(output_dir, "%(title)s.%(ext)s")
     ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": output_path,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "wav",
-                "preferredquality": "192",
-            }
-        ],
-        "postprocessor_args": [
-        "-ac", "1",      # mono
-        "-ar", "16000"   # 16kHz
-        ],
-        "quiet": True,
-    }
+    "format": "bestaudio/best",
+    "outtmpl": output_path,
+
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android", "web"]
+        }
+    },
+
+    "noplaylist": True,
+    "geo_bypass": True,
+    "quiet": True,
+
+    "postprocessors": [
+        {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "wav",
+            "preferredquality": "192",
+        }
+    ],
+
+    "postprocessor_args": [
+        "-ac", "1",
+        "-ar", "16000"
+    ],
+}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+        try:
+            info = ydl.extract_info(url, download=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to download YouTube audio. "
+                f"The video may be restricted or blocked by YouTube. "
+                f"Original error: {str(e)}"
+            )
+    
         base = os.path.splitext(ydl.prepare_filename(info))[0]
         filename = base + ".wav"
 
