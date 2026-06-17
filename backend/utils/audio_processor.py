@@ -29,6 +29,9 @@ def download_youtube_audio(url: str, output_dir: str) -> str:
         "noplaylist": True,
         "geo_bypass": True,
         "quiet": True,
+    
+    
+    "cookiefile": "/etc/secrets/cookies.txt",
 
         # Postprocessors require system ffmpeg to be installed
         "postprocessors": [
