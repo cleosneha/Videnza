@@ -6,7 +6,6 @@ from pathlib import Path
 import yt_dlp
 from pydub import AudioSegment
 
-
 COOKIE_FILE = "/etc/secrets/cookies.txt"
 
 
@@ -14,30 +13,14 @@ def download_youtube_audio(url: str, output_dir: str) -> str:
     output_path = os.path.join(output_dir, "%(title)s.%(ext)s")
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio",
         "outtmpl": output_path,
-
+        "quiet": True,
         "cachedir": False,
-
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "mweb"]
-            }
-        },
-
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-        },
 
         "noplaylist": True,
         "geo_bypass": True,
-        "quiet": True,
+
 
         "postprocessors": [
             {
@@ -63,7 +46,6 @@ def download_youtube_audio(url: str, output_dir: str) -> str:
             )
 
             shutil.copy(COOKIE_FILE, temp_cookie_file)
-
             ydl_opts["cookiefile"] = temp_cookie_file
 
             print("Using YouTube cookies.")
@@ -74,20 +56,19 @@ def download_youtube_audio(url: str, output_dir: str) -> str:
             info = ydl.extract_info(url, download=True)
 
             downloaded_file = ydl.prepare_filename(info)
-            wav_file = os.path.splitext(downloaded_file)[0] + ".wav"
 
-            if not os.path.exists(wav_file):
+            filename = os.path.splitext(downloaded_file)[0] + ".wav"
+
+            if not os.path.exists(filename):
                 raise RuntimeError(
-                    "yt-dlp completed but WAV file was not generated."
+                    f"WAV file not found after download: {filename}"
                 )
 
-            return wav_file
+            return filename
 
     except Exception as e:
         raise RuntimeError(
-            f"Failed to download YouTube audio. "
-            f"The video may be restricted or blocked by YouTube. "
-            f"Original error: {str(e)}"
+            f"Failed to download YouTube audio. Original error: {str(e)}"
         )
 
     finally:
@@ -118,7 +99,7 @@ def chunk_audio(
     wav_path: str,
     output_dir: str,
     chunk_minutes: int = 10
-) -> list:
+) -> list[str]:
 
     audio = AudioSegment.from_wav(wav_path)
 
@@ -141,7 +122,11 @@ def chunk_audio(
     return chunks
 
 
-def process_input(source: str, output_dir: str) -> list:
+def process_input(
+    source: str,
+    output_dir: str,
+) -> list[str]:
+
     if source.startswith(("https://", "http://")):
         wav_path = download_youtube_audio(
             source,
@@ -158,6 +143,7 @@ def process_input(source: str, output_dir: str) -> list:
             wav_path,
             output_dir=output_dir
         )
+
     finally:
         if os.path.exists(wav_path):
             os.remove(wav_path)
