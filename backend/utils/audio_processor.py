@@ -15,7 +15,7 @@ def download_youtube_audio(url: str, output_dir: str) -> str:
     ydl_opts = {
         "format": "bestaudio",
         "outtmpl": output_path,
-        "quiet": True,
+        "quiet": False,
         "cachedir": False,
 
         "noplaylist": True,
